@@ -10,7 +10,6 @@ private:
 public:
     FileException(const std::string& msg) : message("File Error: " + msg) {}
     
-    // Override the what() function
     const char* what() const noexcept override {
         return message.c_str();
     }
@@ -22,7 +21,6 @@ private:
 public:
     InvalidDataException(const std::string& msg) : message("Invalid Data Error: " + msg) {}
     
-    // Override the what() function
     const char* what() const noexcept override {
         return message.c_str();
     }

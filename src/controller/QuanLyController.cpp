@@ -1,24 +1,12 @@
 #include "QuanLyController.h"
+#include "../data/DataManager.h"
 #include "../exception/CustomException.h"
 #include "../model/ChuyenXeThuong.h"
 #include "../model/ChuyenXeVIP.h"
-#include <fstream>
-#include <sstream>
 #include <algorithm>
 #include <iostream>
 #include <cctype>
 #include <iomanip>
-
-// --- Helper Functions ---
-static std::vector<std::string> splitString(const std::string& s, char delimiter) {
-    std::vector<std::string> tokens;
-    std::string token;
-    std::istringstream tokenStream(s);
-    while (std::getline(tokenStream, token, delimiter)) {
-        tokens.push_back(token);
-    }
-    return tokens;
-}
 
 static bool isValidSDT(const std::string& sdt) {
     if (sdt.length() != 10 && sdt.length() != 11) return false;
@@ -36,10 +24,37 @@ static bool isValidCCCD(const std::string& cccd) {
     return true;
 }
 
-// --- Constructor & Destructor ---
+static bool isValidGio(const std::string& gio) {
+    if (gio.length() != 5 || gio[2] != ':') return false;
+    int h = std::stoi(gio.substr(0, 2));
+    int m = std::stoi(gio.substr(3, 2));
+    return (h >= 0 && h <= 23 && m >= 0 && m <= 59);
+}
+
+int QuanLyController::demHanhKhachTheoChuyen(const std::string& maChuyen) const {
+    int count = 0;
+    for (const auto& ve : danhSachVe) {
+        if (ve.getMaChuyenXe() == maChuyen) count++;
+    }
+    return count;
+}
+
+void QuanLyController::capNhatSoHanhKhachTatCa() {
+    for (auto& entry : danhSachChuyenXe) {
+        entry.second->setSoHanhKhach(demHanhKhachTheoChuyen(entry.first));
+    }
+}
+
+int QuanLyController::getSucChuaXe(const std::string& bienSo) const {
+    auto it = danhSachXe.find(bienSo);
+    if (it != danhSachXe.end()) return it->second.getSoGhe();
+    return -1;
+}
+
 QuanLyController::QuanLyController() {
     try {
         loadData();
+        capNhatSoHanhKhachTatCa();
     } catch (const std::exception& e) {
         view.showError(e.what());
     }
@@ -47,110 +62,25 @@ QuanLyController::QuanLyController() {
 
 QuanLyController::~QuanLyController() {
     saveData();
-    for (auto* cx : danhSachChuyenXe) {
-        delete cx;
+    for (auto& entry : danhSachChuyenXe) {
+        delete entry.second;
     }
 }
 
-// --- File I/O ---
 void QuanLyController::loadData() {
-    // Load Xe
-    std::ifstream fileXe("data/xe.csv");
-    if (fileXe.is_open()) {
-        std::string line;
-        while (std::getline(fileXe, line)) {
-            auto tokens = splitString(line, ',');
-            if (tokens.size() >= 3) {
-                danhSachXe.emplace_back(tokens[0], tokens[1], std::stoi(tokens[2]));
-            }
-        }
-        fileXe.close();
-    }
-
-    // Load Hanh Khach
-    std::ifstream fileHK("data/hanh_khach.csv");
-    if (fileHK.is_open()) {
-        std::string line;
-        while (std::getline(fileHK, line)) {
-            auto tokens = splitString(line, ',');
-            if (tokens.size() >= 3) {
-                danhSachHanhKhach.emplace_back(tokens[0], tokens[1], tokens[2]);
-            }
-        }
-        fileHK.close();
-    }
-
-    // Load Ve
-    std::ifstream fileVe("data/ve.csv");
-    if (fileVe.is_open()) {
-        std::string line;
-        while (std::getline(fileVe, line)) {
-            auto tokens = splitString(line, ',');
-            if (tokens.size() >= 4) {
-                danhSachVe.emplace_back(tokens[0], tokens[1], tokens[2], std::stod(tokens[3]));
-            }
-        }
-        fileVe.close();
-    }
-
-    // Load Chuyen Xe
-    std::ifstream fileCX("data/chuyen_xe.csv");
-    if (fileCX.is_open()) {
-        std::string line;
-        while (std::getline(fileCX, line)) {
-            auto tokens = splitString(line, ',');
-            if (tokens.size() >= 8) {
-                int type = std::stoi(tokens[0]);
-                std::string ma = tokens[1];
-                std::string di = tokens[2];
-                std::string den = tokens[3];
-                std::string bien = tokens[4];
-                double kc = std::stod(tokens[5]);
-                std::string ngay = tokens[6];
-                std::string taiXe = tokens[7];
-                
-                if (type == 1) {
-                    danhSachChuyenXe.push_back(new ChuyenXeThuong(ma, di, den, bien, kc, ngay, taiXe));
-                } else if (type == 2 && tokens.size() >= 9) {
-                    double phi = std::stod(tokens[8]);
-                    danhSachChuyenXe.push_back(new ChuyenXeVIP(ma, di, den, bien, kc, ngay, taiXe, phi));
-                }
-            }
-        }
-        fileCX.close();
-    }
+    DataManager::loadAll(danhSachXe, danhSachHanhKhach, danhSachVe, danhSachChuyenXe);
 }
 
 void QuanLyController::saveData() const {
-    std::ofstream fileXe("data/xe.csv");
-    if (!fileXe) throw FileException("Cannot open data/xe.csv for writing");
-    for (const auto& xe : danhSachXe) {
-        fileXe << xe.toCSV() << "\n";
-    }
-
-    std::ofstream fileHK("data/hanh_khach.csv");
-    for (const auto& hk : danhSachHanhKhach) {
-        fileHK << hk.toCSV() << "\n";
-    }
-
-    std::ofstream fileVe("data/ve.csv");
-    for (const auto& ve : danhSachVe) {
-        fileVe << ve.toCSV() << "\n";
-    }
-
-    std::ofstream fileCX("data/chuyen_xe.csv");
-    for (const auto* cx : danhSachChuyenXe) {
-        fileCX << cx->toCSV() << "\n";
-    }
+    DataManager::saveAll(danhSachXe, danhSachHanhKhach, danhSachVe, danhSachChuyenXe);
 }
 
-// --- Main Loop ---
 void QuanLyController::start() {
     bool running = true;
     while (running) {
         view.showMenu();
         int choice = view.getIntInput("");
-        
+
         try {
             switch (choice) {
                 case 1: themXe(); break;
@@ -175,291 +105,735 @@ void QuanLyController::start() {
                 case 20: traCuuKhachHang(); break;
                 case 0: running = false; break;
                 default: view.showError("Chuc nang khong hop le!");
+                         view.pressAnyKey();
             }
-            saveData(); // Auto save after every action
+            if (running && choice != 0) {
+                saveData();
+            }
         } catch (const std::exception& e) {
             view.showError(e.what());
+            view.pressAnyKey();
         }
     }
+    view.clearScreen();
+    std::cout << "End App\n";
 }
 
-// --- QUAN LY XE ---
 void QuanLyController::themXe() {
-    std::string bienSo = view.getStringInput("Nhap bien so xe: ");
+    view.clearScreen();
+    std::cout << "THEM XE MOI\n\n";
+
+    std::string bienSo;
+    while (true) {
+        bienSo = view.getStringInput("Nhap bien so xe: ");
+        if (bienSo.empty()) {
+            view.showError("Bien so khong duoc de trong!");
+            continue;
+        }
+        if (danhSachXe.count(bienSo)) {
+            auto& xe = danhSachXe.at(bienSo);
+            view.showError("Bien so [" + bienSo + "] da ton tai (Loai=" + xe.getLoaiXe() +
+                ", SoGhe=" + std::to_string(xe.getSoGhe()) +
+                "). Vui long nhap bien so khac!");
+        } else {
+            break;
+        }
+    }
+
     std::string loai = view.getStringInput("Nhap loai xe: ");
-    int ghe = view.getIntInput("Nhap so ghe: ");
-    if (ghe <= 0) throw InvalidDataException("So ghe phai lon hon 0");
-    danhSachXe.emplace_back(bienSo, loai, ghe);
-    view.showMessage("Them xe thanh cong!");
+
+    int ghe;
+    while (true) {
+        ghe = view.getIntInput("Nhap suc chua (so ghe): ");
+        if (ghe > 0) break;
+        view.showError("Suc chua phai lon hon 0! Vui long nhap lai.");
+    }
+
+    std::cout << "\nThong tin xe moi\n";
+    std::cout << "  Bien So: " << bienSo << " | Loai: " << loai << " | Suc Chua: " << ghe << " cho\n";
+
+    if (view.confirmYN("Xac nhan them xe?")) {
+        danhSachXe.emplace(bienSo, Xe(bienSo, loai, ghe));
+        view.showMessage("Them xe thanh cong!");
+    } else {
+        view.showMessage("Da huy thao tac them xe.");
+    }
+    view.pressAnyKey();
 }
 
 void QuanLyController::xoaXe() {
+    view.clearScreen();
+    std::cout << "XOA XE\n\n";
+
     std::string bienSo = view.getStringInput("Nhap bien so can xoa: ");
-    auto it = std::remove_if(danhSachXe.begin(), danhSachXe.end(), 
-        [&](const Xe& xe) { return xe.getBienSo() == bienSo; });
-    
-    if (it != danhSachXe.end()) {
-        danhSachXe.erase(it, danhSachXe.end());
+
+    auto it = danhSachXe.find(bienSo);
+    if (it == danhSachXe.end()) {
+        view.showError("Khong tim thay xe voi bien so [" + bienSo + "]!");
+        view.pressAnyKey();
+        return;
+    }
+
+    std::cout << "\nThong tin xe se xoa\n";
+    view.displayXe(it->second);
+
+    if (view.confirmYN("Xac nhan xoa xe nay?")) {
+        danhSachXe.erase(it);
         view.showMessage("Xoa xe thanh cong!");
     } else {
-        view.showError("Khong tim thay xe!");
+        view.showMessage("Da huy thao tac xoa xe.");
     }
+    view.pressAnyKey();
 }
 
 void QuanLyController::timKiemXe() {
+    view.clearScreen();
+    std::cout << "TIM KIEM XE\n\n";
+
     std::string bienSo = view.getStringInput("Nhap bien so can tim: ");
-    for (const auto& xe : danhSachXe) {
-        if (xe.getBienSo() == bienSo) {
-            view.displayXe(xe);
-            return;
-        }
+
+    auto it = danhSachXe.find(bienSo);
+    if (it != danhSachXe.end()) {
+        std::cout << "\nKet qua tim kiem\n";
+        view.displayXe(it->second);
+    } else {
+        view.showError("Khong tim thay xe voi bien so [" + bienSo + "]!");
     }
-    view.showError("Khong tim thay xe!");
+    view.pressAnyKey();
 }
 
 void QuanLyController::suaThongTinXe() {
+    view.clearScreen();
+    std::cout << "SUA THONG TIN XE\n\n";
+
     std::string bienSo = view.getStringInput("Nhap bien so can sua: ");
-    for (auto& xe : danhSachXe) {
-        if (xe.getBienSo() == bienSo) {
-            std::string loai = view.getStringInput("Nhap loai xe moi: ");
-            int ghe = view.getIntInput("Nhap so ghe moi: ");
-            if (ghe <= 0) throw InvalidDataException("So ghe phai lon hon 0");
-            xe.setLoaiXe(loai);
-            xe.setSoGhe(ghe);
-            view.showMessage("Sua thong tin thanh cong!");
-            return;
-        }
+
+    auto it = danhSachXe.find(bienSo);
+    if (it == danhSachXe.end()) {
+        view.showError("Khong tim thay xe voi bien so [" + bienSo + "]!");
+        view.pressAnyKey();
+        return;
     }
-    view.showError("Khong tim thay xe!");
+
+    std::cout << "\nThong tin hien tai\n";
+    view.displayXe(it->second);
+    std::cout << "\n";
+
+    std::string loai = view.getStringInput("Nhap loai xe moi: ");
+
+    int ghe;
+    while (true) {
+        ghe = view.getIntInput("Nhap suc chua moi: ");
+        if (ghe > 0) break;
+        view.showError("Suc chua phai lon hon 0! Vui long nhap lai.");
+    }
+
+    std::cout << "\nThong tin moi\n";
+    std::cout << "  Bien So: " << bienSo << " | Loai: " << loai << " | Suc Chua: " << ghe << " cho\n";
+
+    if (view.confirmYN("Xac nhan sua thong tin?")) {
+        it->second.setLoaiXe(loai);
+        it->second.setSoGhe(ghe);
+        view.showMessage("Sua thong tin thanh cong!");
+    } else {
+        view.showMessage("Da huy thao tac sua.");
+    }
+    view.pressAnyKey();
 }
 
 void QuanLyController::hienThiToanBoXe() {
-    for (const auto& xe : danhSachXe) {
-        view.displayXe(xe);
-    }
+    view.clearScreen();
+    std::cout << "DANH SACH TAT CA XE\n";
+    view.displayDanhSachXe(danhSachXe);
+    view.pressAnyKey();
 }
 
-// --- QUAN LY CHUYEN ---
 void QuanLyController::themChuyen() {
-    int loai = view.getIntInput("Nhap loai chuyen (1-Thuong, 2-VIP): ");
-    std::string ma = view.getStringInput("Ma chuyen: ");
+    view.clearScreen();
+    std::cout << "THEM CHUYEN XE MOI\n\n";
+
+    int loai;
+    while (true) {
+        loai = view.getIntInput("Nhap loai chuyen (1-Thuong, 2-VIP): ");
+        if (loai == 1 || loai == 2) break;
+        view.showError("Loai chuyen chi la 1 (Thuong) hoac 2 (VIP)! Vui long nhap lai.");
+    }
+
+    std::string ma;
+    while (true) {
+        ma = view.getStringInput("Ma chuyen: ");
+        if (ma.empty()) {
+            view.showError("Ma chuyen khong duoc de trong!");
+            continue;
+        }
+        if (danhSachChuyenXe.count(ma)) {
+            view.showError("Ma chuyen [" + ma + "] da ton tai! Vui long nhap ma khac.");
+        } else {
+            break;
+        }
+    }
+
     std::string di = view.getStringInput("Noi di: ");
     std::string den = view.getStringInput("Noi den: ");
-    std::string bien = view.getStringInput("Bien so xe: ");
-    double kc = view.getDoubleInput("Khoang cach (km): ");
-    if (kc <= 0) throw InvalidDataException("Khoang cach phai lon hon 0");
+
+    std::string bien;
+    while (true) {
+        bien = view.getStringInput("Bien so xe: ");
+        if (danhSachXe.count(bien)) break;
+        view.showError("Bien so [" + bien + "] khong ton tai trong danh sach xe! Vui long nhap lai.");
+    }
+
+    double kc;
+    while (true) {
+        kc = view.getDoubleInput("Khoang cach (km): ");
+        if (kc > 0) break;
+        view.showError("Khoang cach phai lon hon 0! Vui long nhap lai.");
+    }
+
     std::string ngay = view.getStringInput("Ngay khoi hanh (DD/MM/YYYY): ");
+
+    std::string gio;
+    while (true) {
+        gio = view.getStringInput("Gio khoi hanh (HH:MM): ");
+        if (isValidGio(gio)) break;
+        view.showError("Gio khong hop le! Vui long nhap dung dinh dang HH:MM (vd: 08:30).");
+    }
+
     std::string taiXe = view.getStringInput("Ten tai xe: ");
 
     if (loai == 1) {
-        danhSachChuyenXe.push_back(new ChuyenXeThuong(ma, di, den, bien, kc, ngay, taiXe));
-        view.showMessage("Them chuyen xe thuong thanh cong!");
-    } else if (loai == 2) {
-        double phuPhi = view.getDoubleInput("Phu phi dich vu VIP: ");
-        if (phuPhi < 0) throw InvalidDataException("Phu phi khong the am");
-        danhSachChuyenXe.push_back(new ChuyenXeVIP(ma, di, den, bien, kc, ngay, taiXe, phuPhi));
-        view.showMessage("Them chuyen xe VIP thanh cong!");
+        std::cout << "\nThong tin chuyen xe thuong\n";
+        std::cout << "  Ma: " << ma << " | " << di << " -> " << den << " | Xe: " << bien
+                  << " | " << kc << "km | Ngay: " << ngay << " | Gio: " << gio << " | TX: " << taiXe << "\n";
+
+        if (view.confirmYN("Xac nhan them chuyen xe?")) {
+            danhSachChuyenXe[ma] = new ChuyenXeThuong(ma, di, den, bien, kc, ngay, gio, taiXe);
+            view.showMessage("Them chuyen xe thuong thanh cong!");
+        } else {
+            view.showMessage("Da huy thao tac.");
+        }
     } else {
-        view.showError("Loai chuyen khong hop le!");
+        double phuPhi;
+        while (true) {
+            phuPhi = view.getDoubleInput("Phu phi dich vu VIP: ");
+            if (phuPhi >= 0) break;
+            view.showError("Phu phi khong the am! Vui long nhap lai.");
+        }
+
+        std::cout << "\nThong tin chuyen xe VIP\n";
+        std::cout << "  Ma: " << ma << " | " << di << " -> " << den << " | Xe: " << bien
+                  << " | " << kc << "km | Ngay: " << ngay << " | Gio: " << gio
+                  << " | TX: " << taiXe << " | Phi VIP: " << phuPhi << " VND\n";
+
+        if (view.confirmYN("Xac nhan them chuyen xe VIP?")) {
+            danhSachChuyenXe[ma] = new ChuyenXeVIP(ma, di, den, bien, kc, ngay, gio, taiXe, phuPhi);
+            view.showMessage("Them chuyen xe VIP thanh cong!");
+        } else {
+            view.showMessage("Da huy thao tac.");
+        }
     }
+    view.pressAnyKey();
 }
 
 void QuanLyController::huyChuyen() {
+    view.clearScreen();
+    std::cout << "HUY CHUYEN XE\n\n";
+
     std::string ma = view.getStringInput("Nhap ma chuyen can huy: ");
-    auto it = std::remove_if(danhSachChuyenXe.begin(), danhSachChuyenXe.end(), 
-        [&](ChuyenXe* cx) {
-            if (cx->getMaChuyen() == ma) {
-                delete cx;
-                return true;
-            }
-            return false;
-        });
-    
-    if (it != danhSachChuyenXe.end()) {
-        danhSachChuyenXe.erase(it, danhSachChuyenXe.end());
-        view.showMessage("Huy chuyen thanh cong!");
-    } else {
-        view.showError("Khong tim thay chuyen xe!");
+
+    auto it = danhSachChuyenXe.find(ma);
+    if (it == danhSachChuyenXe.end()) {
+        view.showError("Khong tim thay chuyen xe voi ma [" + ma + "]!");
+        view.pressAnyKey();
+        return;
     }
+
+    std::cout << "\nThong tin chuyen xe se huy\n";
+    view.displayChuyenXe(it->second);
+
+    if (view.confirmYN("Xac nhan huy chuyen xe nay?")) {
+        auto itVe = std::remove_if(danhSachVe.begin(), danhSachVe.end(),
+            [&](const Ve& ve) { return ve.getMaChuyenXe() == ma; });
+        danhSachVe.erase(itVe, danhSachVe.end());
+
+        delete it->second;
+        danhSachChuyenXe.erase(it);
+        view.showMessage("Huy chuyen va cac ve lien quan thanh cong!");
+    } else {
+        view.showMessage("Da huy thao tac.");
+    }
+    view.pressAnyKey();
 }
 
 void QuanLyController::timKiemChuyen() {
+    view.clearScreen();
+    std::cout << "TIM KIEM CHUYEN XE\n\n";
+
     std::string ma = view.getStringInput("Nhap ma chuyen can tim: ");
-    for (const auto* cx : danhSachChuyenXe) {
-        if (cx->getMaChuyen() == ma) {
-            view.displayChuyenXe(cx);
-            return;
-        }
+
+    auto it = danhSachChuyenXe.find(ma);
+    if (it != danhSachChuyenXe.end()) {
+        std::cout << "\nKet qua tim kiem\n";
+        view.displayChuyenXe(it->second);
+    } else {
+        view.showError("Khong tim thay chuyen xe voi ma [" + ma + "]!");
     }
-    view.showError("Khong tim thay chuyen xe!");
+    view.pressAnyKey();
 }
 
 void QuanLyController::suaThongTinChuyen() {
+    view.clearScreen();
+    std::cout << "SUA THONG TIN CHUYEN XE\n\n";
+
     std::string ma = view.getStringInput("Nhap ma chuyen can sua: ");
-    for (auto* cx : danhSachChuyenXe) {
-        if (cx->getMaChuyen() == ma) {
-            std::string di = view.getStringInput("Noi di moi: ");
-            std::string den = view.getStringInput("Noi den moi: ");
-            std::string bien = view.getStringInput("Bien so xe moi: ");
-            double kc = view.getDoubleInput("Khoang cach moi (km): ");
-            if (kc <= 0) throw InvalidDataException("Khoang cach phai lon hon 0");
-            std::string ngay = view.getStringInput("Ngay khoi hanh moi: ");
-            std::string taiXe = view.getStringInput("Tai xe moi: ");
-            
-            cx->setNoiDi(di);
-            cx->setNoiDen(den);
-            cx->setBienSoXe(bien);
-            cx->setKhoangCach(kc);
-            cx->setNgayKhoiHanh(ngay);
-            cx->setTenTaiXe(taiXe);
-            view.showMessage("Sua thong tin thanh cong!");
-            return;
-        }
+
+    auto it = danhSachChuyenXe.find(ma);
+    if (it == danhSachChuyenXe.end()) {
+        view.showError("Khong tim thay chuyen xe voi ma [" + ma + "]!");
+        view.pressAnyKey();
+        return;
     }
-    view.showError("Khong tim thay chuyen xe!");
+
+    ChuyenXe* cx = it->second;
+    std::cout << "\nThong tin hien tai\n";
+    view.displayChuyenXe(cx);
+    std::cout << "\n";
+
+    std::string di = view.getStringInput("Noi di moi: ");
+    std::string den = view.getStringInput("Noi den moi: ");
+
+    std::string bien;
+    while (true) {
+        bien = view.getStringInput("Bien so xe moi: ");
+        if (danhSachXe.count(bien)) break;
+        view.showError("Bien so [" + bien + "] khong ton tai! Vui long nhap lai.");
+    }
+
+    double kc;
+    while (true) {
+        kc = view.getDoubleInput("Khoang cach moi (km): ");
+        if (kc > 0) break;
+        view.showError("Khoang cach phai lon hon 0! Vui long nhap lai.");
+    }
+
+    std::string ngay = view.getStringInput("Ngay khoi hanh moi (DD/MM/YYYY): ");
+
+    std::string gio;
+    while (true) {
+        gio = view.getStringInput("Gio khoi hanh moi (HH:MM): ");
+        if (isValidGio(gio)) break;
+        view.showError("Gio khong hop le! Vui long nhap dung dinh dang HH:MM.");
+    }
+
+    std::string taiXe = view.getStringInput("Tai xe moi: ");
+
+    std::cout << "\nThong tin moi\n";
+    std::cout << "  Ma: " << ma << " | " << di << " -> " << den << " | Xe: " << bien
+              << " | " << kc << "km | Ngay: " << ngay << " | Gio: " << gio << " | TX: " << taiXe << "\n";
+
+    if (view.confirmYN("Xac nhan sua thong tin?")) {
+        cx->setNoiDi(di);
+        cx->setNoiDen(den);
+        cx->setBienSoXe(bien);
+        cx->setKhoangCach(kc);
+        cx->setNgayKhoiHanh(ngay);
+        cx->setGioKhoiHanh(gio);
+        cx->setTenTaiXe(taiXe);
+        view.showMessage("Sua thong tin thanh cong!");
+    } else {
+        view.showMessage("Da huy thao tac sua.");
+    }
+    view.pressAnyKey();
 }
 
 void QuanLyController::hienThiDanhSachChuyen() {
-    for (const auto* cx : danhSachChuyenXe) {
-        view.displayChuyenXe(cx);
-    }
+    view.clearScreen();
+    std::cout << "DANH SACH CHUYEN XE\n";
+    view.displayDanhSachChuyenXe(danhSachChuyenXe);
+    view.pressAnyKey();
 }
 
 void QuanLyController::sapXepChuyen() {
-    std::sort(danhSachChuyenXe.begin(), danhSachChuyenXe.end(), [](ChuyenXe* a, ChuyenXe* b) {
-        return a->getKhoangCach() < b->getKhoangCach(); // Sort by distance ascending
+    view.clearScreen();
+    std::cout << "SAP XEP CHUYEN XE\n";
+
+    // map khong sap xep duoc, chuyen sang vector de sort roi hien thi
+    std::vector<ChuyenXe*> sorted;
+    for (const auto& entry : danhSachChuyenXe) {
+        sorted.push_back(entry.second);
+    }
+    std::sort(sorted.begin(), sorted.end(), [](ChuyenXe* a, ChuyenXe* b) {
+        return a->getKhoangCach() < b->getKhoangCach();
     });
-    view.showMessage("Da sap xep chuyen xe theo khoang cach tang dan!");
-    hienThiDanhSachChuyen();
+    view.showMessage("Da sap xep danh sach chuyen xe theo khoang cach tang dan.");
+    view.displayDanhSachChuyenXe(sorted);
+    view.pressAnyKey();
 }
 
-// --- QUAN LY VE ---
 void QuanLyController::datVe() {
-    std::string maVe = view.getStringInput("Nhap ma ve: ");
-    std::string maChuyen = view.getStringInput("Nhap ma chuyen xe: ");
-    std::string cccd = view.getStringInput("Nhap CCCD hanh khach (12 so): ");
-    if (!isValidCCCD(cccd)) throw InvalidDataException("CCCD phai la 12 so hop le");
-    double gia = view.getDoubleInput("Nhap gia tien: ");
-    if (gia <= 0) throw InvalidDataException("Gia tien phai lon hon 0");
-    
-    // Auto create HanhKhach if not exists (Simplified logic)
-    bool foundHanhKhach = false;
-    for (const auto& hk : danhSachHanhKhach) {
-        if (hk.getCCCD() == cccd) foundHanhKhach = true;
+    view.clearScreen();
+    std::cout << "DAT VE\n\n";
+
+    std::string maVe;
+    while (true) {
+        maVe = view.getStringInput("Nhap ma ve: ");
+        if (maVe.empty()) {
+            view.showError("Ma ve khong duoc de trong!");
+            continue;
+        }
+        bool trung = false;
+        for (const auto& ve : danhSachVe) {
+            if (ve.getMaVe() == maVe) {
+                view.showError("Ma ve [" + maVe + "] da ton tai! Vui long nhap ma khac.");
+                trung = true;
+                break;
+            }
+        }
+        if (!trung) break;
     }
+
+    std::string maChuyen;
+    ChuyenXe* chuyen = nullptr;
+    while (true) {
+        maChuyen = view.getStringInput("Nhap ma chuyen xe: ");
+        auto it = danhSachChuyenXe.find(maChuyen);
+        if (it != danhSachChuyenXe.end()) {
+            chuyen = it->second;
+            break;
+        }
+        view.showError("Ma chuyen [" + maChuyen + "] khong ton tai! Vui long nhap lai.");
+    }
+
+    std::cout << "\nThong tin chuyen xe\n";
+    view.displayChuyenXe(chuyen);
+
+    int sucChua = getSucChuaXe(chuyen->getBienSoXe());
+    int soVeHienTai = demHanhKhachTheoChuyen(maChuyen);
+
+    if (sucChua > 0 && soVeHienTai >= sucChua) {
+        view.showError("Chuyen xe nay da day! (" + std::to_string(soVeHienTai) + "/" + std::to_string(sucChua) + " cho)");
+        view.pressAnyKey();
+        return;
+    }
+
+    if (sucChua > 0) {
+        std::cout << "  Con " << (sucChua - soVeHienTai) << "/" << sucChua << " cho trong.\n\n";
+    }
+
+    std::string noiDi = view.getStringInput("Nhap noi di: ");
+    std::string noiDen = view.getStringInput("Nhap noi den: ");
+
+    std::string cccd;
+    while (true) {
+        cccd = view.getStringInput("Nhap CCCD hanh khach (12 so): ");
+        if (isValidCCCD(cccd)) break;
+        view.showError("CCCD phai la 12 chu so! Vui long nhap lai.");
+    }
+
+    bool foundHanhKhach = danhSachHanhKhach.count(cccd) > 0;
+    if (foundHanhKhach) {
+        auto& hk = danhSachHanhKhach.at(cccd);
+        std::cout << "  Hanh khach: " << hk.getTen() << " (SDT: " << hk.getSDT() << ")\n";
+    }
+
     if (!foundHanhKhach) {
-        std::string ten = view.getStringInput("Hanh khach moi! Nhap ten: ");
-        std::string sdt = view.getStringInput("Nhap SDT (10-11 so): ");
-        if (!isValidSDT(sdt)) throw InvalidDataException("SDT phai la 10-11 so hop le");
-        danhSachHanhKhach.emplace_back(cccd, ten, sdt);
+        std::cout << "\n[INFO] Hanh khach moi! Vui long nhap thong tin:\n";
+        std::string ten = view.getStringInput("Nhap ho ten: ");
+
+        std::string sdt;
+        while (true) {
+            sdt = view.getStringInput("Nhap SDT (10-11 so): ");
+            if (isValidSDT(sdt)) break;
+            view.showError("SDT phai la 10-11 chu so! Vui long nhap lai.");
+        }
+        danhSachHanhKhach.emplace(cccd, HanhKhach(cccd, ten, sdt));
     }
-    
-    danhSachVe.emplace_back(maVe, maChuyen, cccd, gia);
-    view.showMessage("Dat ve thanh cong!");
+
+    double gia;
+    while (true) {
+        gia = view.getDoubleInput("Nhap gia tien (VND): ");
+        if (gia > 0) break;
+        view.showError("Gia tien phai lon hon 0! Vui long nhap lai.");
+    }
+
+    std::cout << "\nThong tin ve\n";
+    std::cout << "  Ma Ve: " << maVe << " | Chuyen: " << maChuyen
+              << " | CCCD: " << cccd << " | Gia: " << std::fixed << std::setprecision(0) << gia << " VND"
+              << " | " << noiDi << " -> " << noiDen << "\n";
+
+    if (view.confirmYN("Xac nhan dat ve?")) {
+        danhSachVe.emplace_back(maVe, maChuyen, cccd, gia, noiDi, noiDen);
+        chuyen->tangHanhKhach();
+        view.showMessage("Dat ve thanh cong! So hanh khach chuyen " + maChuyen + ": " + std::to_string(chuyen->getSoHanhKhach()));
+    } else {
+        if (!foundHanhKhach) {
+            danhSachHanhKhach.erase(cccd);
+        }
+        view.showMessage("Da huy thao tac dat ve.");
+    }
+    view.pressAnyKey();
 }
 
 void QuanLyController::huyVe() {
+    view.clearScreen();
+    std::cout << "HUY VE\n\n";
+
     std::string maVe = view.getStringInput("Nhap ma ve can huy: ");
-    auto it = std::remove_if(danhSachVe.begin(), danhSachVe.end(), 
-        [&](const Ve& ve) { return ve.getMaVe() == maVe; });
-    
-    if (it != danhSachVe.end()) {
-        danhSachVe.erase(it, danhSachVe.end());
-        view.showMessage("Huy ve thanh cong!");
-    } else {
-        view.showError("Khong tim thay ve!");
+
+    bool found = false;
+    std::string maChuyenLienQuan;
+    for (const auto& ve : danhSachVe) {
+        if (ve.getMaVe() == maVe) {
+            std::cout << "\nThong tin ve se huy\n";
+            view.displayVe(ve);
+            maChuyenLienQuan = ve.getMaChuyenXe();
+            found = true;
+            break;
+        }
     }
+
+    if (!found) {
+        view.showError("Khong tim thay ve voi ma [" + maVe + "]!");
+        view.pressAnyKey();
+        return;
+    }
+
+    if (view.confirmYN("Xac nhan huy ve nay?")) {
+        auto it = std::remove_if(danhSachVe.begin(), danhSachVe.end(),
+            [&](const Ve& ve) { return ve.getMaVe() == maVe; });
+        danhSachVe.erase(it, danhSachVe.end());
+
+        auto itCX = danhSachChuyenXe.find(maChuyenLienQuan);
+        if (itCX != danhSachChuyenXe.end()) {
+            itCX->second->giamHanhKhach();
+            view.showMessage("Huy ve thanh cong! So HK chuyen " + maChuyenLienQuan + ": " + std::to_string(itCX->second->getSoHanhKhach()));
+        } else {
+            view.showMessage("Huy ve thanh cong!");
+        }
+    } else {
+        view.showMessage("Da huy thao tac.");
+    }
+    view.pressAnyKey();
 }
 
 void QuanLyController::timKiemVe() {
+    view.clearScreen();
+    std::cout << "TIM KIEM VE\n\n";
+
     std::string maVe = view.getStringInput("Nhap ma ve can tim: ");
     for (const auto& ve : danhSachVe) {
         if (ve.getMaVe() == maVe) {
+            std::cout << "\nKet qua tim kiem\n";
             view.displayVe(ve);
+            view.pressAnyKey();
             return;
         }
     }
-    view.showError("Khong tim thay ve!");
+    view.showError("Khong tim thay ve voi ma [" + maVe + "]!");
+    view.pressAnyKey();
 }
 
 void QuanLyController::suaThongTinVe() {
+    view.clearScreen();
+    std::cout << "SUA THONG TIN VE\n\n";
+
     std::string maVe = view.getStringInput("Nhap ma ve can sua: ");
     for (auto& ve : danhSachVe) {
         if (ve.getMaVe() == maVe) {
-            std::string maChuyen = view.getStringInput("Ma chuyen xe moi: ");
-            std::string cccd = view.getStringInput("CCCD moi (12 so): ");
-            if (!isValidCCCD(cccd)) throw InvalidDataException("CCCD phai la 12 so hop le");
-            double gia = view.getDoubleInput("Gia tien moi: ");
-            if (gia <= 0) throw InvalidDataException("Gia tien phai lon hon 0");
-            
-            ve.setMaChuyenXe(maChuyen);
-            ve.setCCCDHanhKhach(cccd);
-            ve.setGiaTien(gia);
-            view.showMessage("Sua thong tin thanh cong!");
+            std::cout << "\nThong tin hien tai\n";
+            view.displayVe(ve);
+            std::cout << "\n";
+
+            std::string maChuyen;
+            while (true) {
+                maChuyen = view.getStringInput("Ma chuyen xe moi: ");
+                if (danhSachChuyenXe.count(maChuyen)) break;
+                view.showError("Ma chuyen [" + maChuyen + "] khong ton tai! Vui long nhap lai.");
+            }
+
+            std::string cccd;
+            while (true) {
+                cccd = view.getStringInput("CCCD moi (12 so): ");
+                if (isValidCCCD(cccd)) break;
+                view.showError("CCCD phai la 12 chu so! Vui long nhap lai.");
+            }
+
+            double gia;
+            while (true) {
+                gia = view.getDoubleInput("Gia tien moi (VND): ");
+                if (gia > 0) break;
+                view.showError("Gia tien phai lon hon 0! Vui long nhap lai.");
+            }
+
+            std::string noiDi = view.getStringInput("Noi di moi: ");
+            std::string noiDen = view.getStringInput("Noi den moi: ");
+
+            std::cout << "\nThong tin moi\n";
+            std::cout << "  Ma Ve: " << maVe << " | Chuyen: " << maChuyen
+                      << " | CCCD: " << cccd << " | Gia: " << std::fixed << std::setprecision(0) << gia << " VND"
+                      << " | " << noiDi << " -> " << noiDen << "\n";
+
+            if (view.confirmYN("Xac nhan sua thong tin ve?")) {
+                std::string maChuyenCu = ve.getMaChuyenXe();
+                if (maChuyenCu != maChuyen) {
+                    auto itCu = danhSachChuyenXe.find(maChuyenCu);
+                    if (itCu != danhSachChuyenXe.end()) itCu->second->giamHanhKhach();
+                }
+
+                ve.setMaChuyenXe(maChuyen);
+                ve.setCCCDHanhKhach(cccd);
+                ve.setGiaTien(gia);
+                ve.setNoiDi(noiDi);
+                ve.setNoiDen(noiDen);
+
+                if (maChuyenCu != maChuyen) {
+                    auto itMoi = danhSachChuyenXe.find(maChuyen);
+                    if (itMoi != danhSachChuyenXe.end()) itMoi->second->tangHanhKhach();
+                }
+
+                view.showMessage("Sua thong tin ve thanh cong!");
+            } else {
+                view.showMessage("Da huy thao tac sua.");
+            }
+            view.pressAnyKey();
             return;
         }
     }
-    view.showError("Khong tim thay ve!");
+    view.showError("Khong tim thay ve voi ma [" + maVe + "]!");
+    view.pressAnyKey();
 }
 
 void QuanLyController::hienThiDanhSachVe() {
-    for (const auto& ve : danhSachVe) {
-        view.displayVe(ve);
-    }
+    view.clearScreen();
+    std::cout << "DANH SACH VE\n";
+    view.displayDanhSachVe(danhSachVe);
+    view.pressAnyKey();
 }
 
-// --- TONG QUAN ---
 void QuanLyController::thongKeTongQuat() {
+    view.clearScreen();
+    std::cout << "THONG KE TONG QUAT\n\n";
+
     double tongDoanhThu = 0;
-    for (const auto* cx : danhSachChuyenXe) {
+    int tongHK = 0;
+    for (const auto& entry : danhSachChuyenXe) {
+        const auto* cx = entry.second;
         tongDoanhThu += cx->tinhDoanhThu();
+        tongHK += cx->getSoHanhKhach();
     }
-    std::cout << "[THONG KE] Tong doanh thu tat ca cac chuyen xe: " << std::fixed << std::setprecision(0) << tongDoanhThu << " VND\n";
-    std::cout << "[THONG KE] Tong so xe: " << danhSachXe.size() << "\n";
-    std::cout << "[THONG KE] Tong so hanh khach: " << danhSachHanhKhach.size() << "\n";
-    std::cout << "[THONG KE] Tong so ve: " << danhSachVe.size() << "\n";
+
+    std::cout << "+------------------------------------+------------------+\n";
+    std::cout << "|            Chi tieu                |     Gia tri      |\n";
+    std::cout << "+------------------------------------+------------------+\n";
+    std::cout << "| Tong so xe                         | " << std::setw(16) << std::right << danhSachXe.size() << " |\n";
+    std::cout << "| Tong so hanh khach (dang ky)       | " << std::setw(16) << std::right << danhSachHanhKhach.size() << " |\n";
+    std::cout << "| Tong so ve da dat                  | " << std::setw(16) << std::right << danhSachVe.size() << " |\n";
+    std::cout << "| Tong so chuyen xe                  | " << std::setw(16) << std::right << danhSachChuyenXe.size() << " |\n";
+    std::cout << "| Tong hanh khach tren cac chuyen    | " << std::setw(16) << std::right << tongHK << " |\n";
+    std::cout << "| Tong doanh thu (VND)               | " << std::setw(16) << std::right << std::fixed << std::setprecision(0) << tongDoanhThu << " |\n";
+    std::cout << "+------------------------------------+------------------+\n";
+
+    if (!danhSachChuyenXe.empty()) {
+        std::cout << "\nChi tiet hanh khach theo chuyen\n";
+        std::cout << "+--------+----------------+----------------+-------+------+----------+\n";
+        std::cout << "| Ma     |    Noi Di      |    Noi Den     |  Gio  |  HK  | Suc Chua |\n";
+        std::cout << "+--------+----------------+----------------+-------+------+----------+\n";
+        for (const auto& entry : danhSachChuyenXe) {
+            const auto* cx = entry.second;
+            int sc = getSucChuaXe(cx->getBienSoXe());
+            std::string scStr = (sc >= 0) ? std::to_string(sc) : "N/A";
+            std::cout << "| " << std::setw(6) << std::left << cx->getMaChuyen() << " "
+                      << "| " << std::setw(14) << std::left << cx->getNoiDi() << " "
+                      << "| " << std::setw(14) << std::left << cx->getNoiDen() << " "
+                      << "| " << std::setw(5) << std::left << cx->getGioKhoiHanh() << " "
+                      << "| " << std::setw(4) << std::right << cx->getSoHanhKhach() << " "
+                      << "| " << std::setw(8) << std::right << scStr << " |\n";
+        }
+        std::cout << "+--------+----------------+----------------+-------+------+----------+\n";
+    }
+
+    view.pressAnyKey();
 }
 
 void QuanLyController::xemLichTrinhTrongNgay() {
+    view.clearScreen();
+    std::cout << "LICH TRINH TRONG NGAY\n\n";
+
     std::string ngay = view.getStringInput("Nhap ngay can xem (DD/MM/YYYY): ");
-    bool found = false;
-    for (const auto* cx : danhSachChuyenXe) {
+
+    std::vector<ChuyenXe*> filtered;
+    for (const auto& entry : danhSachChuyenXe) {
+        auto* cx = entry.second;
         if (cx->getNgayKhoiHanh() == ngay) {
-            view.displayChuyenXe(cx);
-            found = true;
+            filtered.push_back(cx);
         }
     }
-    if (!found) view.showMessage("Khong co lich trinh nao trong ngay nay.");
+
+    if (filtered.empty()) {
+        view.showMessage("Khong co lich trinh nao trong ngay " + ngay + ".");
+    } else {
+        // sort theo time
+        std::sort(filtered.begin(), filtered.end(), [](ChuyenXe* a, ChuyenXe* b) {
+            return a->getGioKhoiHanh() < b->getGioKhoiHanh();
+        });
+        std::cout << "\nLich trinh ngay " << ngay << ":\n";
+        view.displayDanhSachChuyenXe(filtered);
+    }
+    view.pressAnyKey();
 }
 
 void QuanLyController::traCuuTaiXe() {
+    view.clearScreen();
+    std::cout << "TRA CUU TAI XE\n\n";
+
     std::string tenTX = view.getStringInput("Nhap ten tai xe: ");
-    bool found = false;
-    for (const auto* cx : danhSachChuyenXe) {
+
+    std::vector<ChuyenXe*> filtered;
+    for (const auto& entry : danhSachChuyenXe) {
+        auto* cx = entry.second;
         if (cx->getTenTaiXe() == tenTX) {
-            view.displayChuyenXe(cx);
-            found = true;
+            filtered.push_back(cx);
         }
     }
-    if (!found) view.showError("Khong tim thay tai xe hoac tai xe chua co chuyen!");
+
+    if (filtered.empty()) {
+        view.showError("Khong tim thay tai xe [" + tenTX + "] hoac tai xe chua co chuyen!");
+    } else {
+        std::cout << "\nCac chuyen xe cua tai xe " << tenTX << ":\n";
+        view.displayDanhSachChuyenXe(filtered);
+    }
+    view.pressAnyKey();
 }
 
 void QuanLyController::traCuuKhachHang() {
+    view.clearScreen();
+    std::cout << "TRA CUU KHACH HANG\n\n";
+
     std::string query = view.getStringInput("Nhap ten hoac CCCD khach hang: ");
     bool found = false;
-    for (const auto& hk : danhSachHanhKhach) {
+
+    for (const auto& entry : danhSachHanhKhach) {
+        const auto& hk = entry.second;
         if (hk.getTen() == query || hk.getCCCD() == query) {
+            std::cout << "\nThong tin khach hang\n";
             view.displayHanhKhach(hk);
-            
-            // Hien thi them ve cua khach hang nay
-            std::cout << "--- Ve da dat ---\n";
+
+            std::vector<Ve> veOfHK;
             for (const auto& ve : danhSachVe) {
                 if (ve.getCCCDHanhKhach() == hk.getCCCD()) {
-                    view.displayVe(ve);
+                    veOfHK.push_back(ve);
                 }
+            }
+
+            if (veOfHK.empty()) {
+                std::cout << "  Khach hang chua dat ve nao.\n";
+            } else {
+                std::cout << "\nVe da dat\n";
+                view.displayDanhSachVe(veOfHK);
             }
             found = true;
         }
     }
-    if (!found) view.showError("Khong tim thay khach hang!");
+    if (!found) view.showError("Khong tim thay khach hang [" + query + "]!");
+    view.pressAnyKey();
 }

@@ -2,6 +2,7 @@
 #define QUANLYCONTROLLER_H
 
 #include <vector>
+#include <map>
 #include "../model/Xe.h"
 #include "../model/HanhKhach.h"
 #include "../model/Ve.h"
@@ -10,14 +11,19 @@
 
 class QuanLyController {
 private:
-    std::vector<Xe> danhSachXe;
-    std::vector<HanhKhach> danhSachHanhKhach;
-    std::vector<Ve> danhSachVe;
-    std::vector<ChuyenXe*> danhSachChuyenXe;
+    std::map<std::string, Xe> danhSachXe;                // key: bienSo
+    std::map<std::string, HanhKhach> danhSachHanhKhach;  // key: cccd
+    std::vector<Ve> danhSachVe;                          // ve van dung vector
+    std::map<std::string, ChuyenXe*> danhSachChuyenXe;   // key: maChuyen
     ConsoleView view;
 
     void loadData();
     void saveData() const;
+
+    // Helper methods
+    int demHanhKhachTheoChuyen(const std::string& maChuyen) const;
+    void capNhatSoHanhKhachTatCa();
+    int getSucChuaXe(const std::string& bienSo) const;
 
 public:
     QuanLyController();
@@ -25,14 +31,14 @@ public:
 
     void start();
 
-    // Quan ly Xe
+    // xe
     void themXe();
     void xoaXe();
     void timKiemXe();
     void suaThongTinXe();
     void hienThiToanBoXe();
 
-    // Quan ly Chuyen
+    // quan ly Chuyen
     void themChuyen();
     void huyChuyen();
     void timKiemChuyen();
@@ -40,14 +46,14 @@ public:
     void hienThiDanhSachChuyen();
     void sapXepChuyen();
 
-    // Quan ly Ve
+    // quan ly Ve
     void datVe();
     void huyVe();
     void timKiemVe();
     void suaThongTinVe();
     void hienThiDanhSachVe();
 
-    // Tong quan
+    // tong quan
     void thongKeTongQuat();
     void xemLichTrinhTrongNgay();
     void traCuuTaiXe();
