@@ -1,7 +1,7 @@
-#include "src/controller/QuanLyController.h"
+#include "src/controller/MainController.h"
 
 int main() {
-    QuanLyController app;
+    MainController app;
     app.start();
     return 0;
 }
