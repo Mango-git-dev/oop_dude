@@ -326,47 +326,16 @@ void ChuyenXeController::timKiemChuyen() {
             view.showError("Vui long nhap noi den!");
         }
 
-        long long tuPhut  = nhapThoiGianCX("Thoi gian BAT DAU ", view);
-        long long denPhut = nhapThoiGianCX("Thoi gian KET THUC ", view);
-
-        if (tuPhut < 0 || denPhut < 0 || tuPhut > denPhut) {
-            view.showError("Khoang thoi gian khong hop le! Thoi gian bat dau phai truoc thoi gian ket thuc.");
-            view.pressAnyKey();
-            return;
-        }
-        const long long NAM_TIENG = 5 * 60;
-
-        // loc chuyen trong khoang thoi gian nao do, khoang cach 5 tieng gan nhat
         std::vector<ChuyenXe*> ketQua;
         for (const auto& entry : danhSachChuyenXe) {
             ChuyenXe* cx = entry.second;
             if (StringUtil::normalizeName(cx->getNoiDi())  != noiDi)  continue;
             if (StringUtil::normalizeName(cx->getNoiDen()) != noiDen) continue;
-            long long phut = chuyenXeParseMinutes(cx->getNgayKhoiHanh(), cx->getGioKhoiHanh());
-            if (phut < 0) continue;
-            if (phut >= tuPhut && phut <= denPhut) ketQua.push_back(cx);
+            ketQua.push_back(cx);
         }
 
         if (ketQua.empty()) {
-            long long minKc = 9999999LL;
-            ChuyenXe* ganNhat = nullptr;
-            for (const auto& entry : danhSachChuyenXe) {
-                ChuyenXe* cx = entry.second;
-                if (StringUtil::normalizeName(cx->getNoiDi())  != noiDi)  continue;
-                if (StringUtil::normalizeName(cx->getNoiDen()) != noiDen) continue;
-                long long phut = chuyenXeParseMinutes(cx->getNgayKhoiHanh(), cx->getGioKhoiHanh());
-                if (phut < 0) continue;
-                long long kc = (phut < tuPhut) ? (tuPhut - phut) : (phut - denPhut);
-                if (kc < minKc) { minKc = kc; ganNhat = cx; }
-            }
-            if (ganNhat == nullptr || minKc > NAM_TIENG) {
-                view.showError("Khong tim thay chuyen xe phu hop! (Khong co chuyen " + noiDi + " -> " + noiDen + " trong khoang thoi gian hoac gan hon 5 tieng)");
-            } else {
-                std::cout << "\n[INFO] Khong co chuyen trong khoang thoi gian da chon.\n";
-                std::cout << "[INFO] Chuyen gan nhat tim duoc (cach " << (minKc / 60) << " gio " << (minKc % 60) << " phut):\n";
-                ketQua.push_back(ganNhat);
-                view.displayDanhSachChuyenXe(ketQua);
-            }
+            view.showError("Khong tim thay chuyen xe nao tu [" + noiDi + "] den [" + noiDen + "]!");
         } else {
             std::cout << "\nKet qua tim kiem (" << ketQua.size() << " chuyen):\n";
             view.displayDanhSachChuyenXe(ketQua);
