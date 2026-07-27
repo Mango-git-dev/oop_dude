@@ -243,61 +243,20 @@ void VeController::datVeKhachHang() {
             view.showError("Vui long nhap noi den!");
         }
 
-        long long tuPhut  = nhapThoiGianVe("Thoi gian BAT DAU ", view);
-        long long denPhut = nhapThoiGianVe("Thoi gian KET THUC ", view);
-
-        if (tuPhut < 0 || denPhut < 0 || tuPhut > denPhut) {
-            view.showError("Khoang thoi gian khong hop le! Thoi gian bat dau phai truoc thoi gian ket thuc.");
-            view.pressAnyKey();
-            return;
-        }
-        const long long NAM_TIENG = 5 * 60; // 300 phut
-
         std::vector<ChuyenXe*> ketQua;
         std::vector<int>       ketQuaCho;
         for (size_t i = 0; i < tatCaChuyen.size(); ++i) {
             ChuyenXe* cx = tatCaChuyen[i];
             if (StringUtil::normalizeName(cx->getNoiDi())  != noiDi)  continue;
             if (StringUtil::normalizeName(cx->getNoiDen()) != noiDen) continue;
-            long long phutChuyen = parseToMinutes(cx->getNgayKhoiHanh(), cx->getGioKhoiHanh());
-            if (phutChuyen < 0) continue;
-            if (phutChuyen >= tuPhut && phutChuyen <= denPhut) {
-                ketQua.push_back(cx);
-                ketQuaCho.push_back(tatCaChoTrong[i]);
-            }
+            ketQua.push_back(cx);
+            ketQuaCho.push_back(tatCaChoTrong[i]);
         }
 
         if (ketQua.empty()) {
-            long long minKhoangCach = LLONG_MAX;
-            ChuyenXe* ganNhat = nullptr;
-            int ganNhatCho = 0;
-            for (size_t i = 0; i < tatCaChuyen.size(); ++i) {
-                ChuyenXe* cx = tatCaChuyen[i];
-                if (StringUtil::normalizeName(cx->getNoiDi())  != noiDi)  continue;
-                if (StringUtil::normalizeName(cx->getNoiDen()) != noiDen) continue;
-                long long phutChuyen = parseToMinutes(cx->getNgayKhoiHanh(), cx->getGioKhoiHanh());
-                if (phutChuyen < 0) continue;
-                
-                long long kc = 0;
-                if (phutChuyen < tuPhut)  kc = tuPhut  - phutChuyen;
-                else                       kc = phutChuyen - denPhut;
-                if (kc < minKhoangCach) {
-                    minKhoangCach = kc;
-                    ganNhat = cx;
-                    ganNhatCho = tatCaChoTrong[i];
-                }
-            }
-
-            if (ganNhat == nullptr || minKhoangCach > NAM_TIENG) {
-                view.showError("Khong tim thay chuyen xe phu hop! (Khong co chuyen nao " + noiDi + " -> " + noiDen + " trong khoang thoi gian hoac gan hon 5 tieng)");
-                view.pressAnyKey();
-                return;
-            } else {
-                std::cout << "\n[INFO] Khong co chuyen trong khoang thoi gian da chon.\n";
-                std::cout << "[INFO] Chuyen gan nhat tim duoc (cach " << (minKhoangCach / 60) << " gio " << (minKhoangCach % 60) << " phut):\n";
-                ketQua.push_back(ganNhat);
-                ketQuaCho.push_back(ganNhatCho);
-            }
+            view.showError("Khong tim thay chuyen xe nao tu [" + noiDi + "] den [" + noiDen + "] con cho trong!");
+            view.pressAnyKey();
+            return;
         }
 
         availableTrips = ketQua;
